@@ -1,4 +1,4 @@
-# Testing of the Model
+# Testing of the Model - Improved Version
 import pandas as pd
 import numpy as np
 import os
@@ -30,12 +30,11 @@ def calculate_metrics(y_true, y_pred):
     
     fscores = np.array([f1_class1, f1_class2, fscore_avg])
     
-    return confusion_matrix, fscores
+    return confusion_matrix, fscores, accuracy
 
 def measures(y_true, y_pred):
-    confusion_matrix, fscores = calculate_metrics(y_true, y_pred)
+    confusion_matrix, fscores, accuracy = calculate_metrics(y_true, y_pred)
     
-    # Obtener la ruta del directorio del script para guardar archivos
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     confusion_df = pd.DataFrame(confusion_matrix, 
@@ -51,76 +50,91 @@ def measures(y_true, y_pred):
     fscores_path = os.path.join(script_dir, 'fscores.csv')
     fscores_df.to_csv(fscores_path, index=False)
     
-    return confusion_matrix, fscores
+    return confusion_matrix, fscores, accuracy
+
+def normalize_with_stats(X, mean, std):
+    """Aplicar normalización con estadísticas guardadas"""
+    return (X - mean) / std
 
 def main():
-    # Obtener la ruta del directorio donde está el script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Ruta a la carpeta DATA
     data_path = os.path.join(script_dir, '..', 'DATA')
     
-    # Verificar que existen los archivos necesarios
+    # Verificar archivos necesarios
     required_files = {
-        'config_sae.csv': os.path.join(script_dir, 'config_sae.csv'),
         'W_softmax.npy': os.path.join(script_dir, 'W_softmax.npy'),
         'model_rdim.npz': os.path.join(script_dir, 'model_rdim.npz'),
-        'dtrain.csv': os.path.join(data_path, 'dtrain.csv'),
+        'dtest.csv': os.path.join(data_path, 'dtest.csv'),
         'classtest.csv': os.path.join(data_path, 'classtest.csv')
     }
     
-    # Verificar existencia de archivos
     for file_name, file_path in required_files.items():
         if not os.path.exists(file_path):
             print(f"ERROR: No se encuentra el archivo {file_name} en {file_path}")
             print("Asegúrate de haber ejecutado primero:")
-            print("1. rdim.py (para generar model_rdim.npz)")
-            print("2. trn.py (para generar W_softmax.npy)")
+            print("1. rdim_mejorado.py (para generar model_rdim.npz)")
+            print("2. trn_mejorado.py (para generar W_softmax.npy)")
             return
     
-    # Leer config_sae.csv
-    config = pd.read_csv(required_files['config_sae.csv'], header=None).values.flatten()
-    
-    # Leer dtrain.csv y classtest.csv
-    X = pd.read_csv(required_files['dtrain.csv'], header=None).values.T
+    # Leer datos de TEST (NO de train)
+    X = pd.read_csv(required_files['dtest.csv'], header=None).values.T
     Y = pd.read_csv(required_files['classtest.csv'], header=None).values.T
     
-    # Cargar pesos y modelo usando rutas absolutas
+    # Cargar pesos y modelo
     W = np.load(required_files['W_softmax.npy'])
-    model = np.load(required_files['model_rdim.npz'])
+    model = np.load(required_files['model_rdim.npz'], allow_pickle=True)
     V1 = model['V1']
     V2 = model['V2']
     V3 = model['V3']
     
-    print(f"Datos de entrada: {X.shape}")
-    print(f"Etiquetas: {Y.shape}")
-    print(f"Pesos Softmax: {W.shape}")
-    print(f"Modelo V1: {V1.shape}, V2: {V2.shape}, V3: {V3.shape}")
+    # Cargar estadísticas de normalización
+    means = model['means']
+    stds = model['stds']
     
-    # Normalizar datos y aplicar autoencoders
-    X = (X - np.mean(X, axis=1, keepdims=True)) / (np.std(X, axis=1, keepdims=True) + 1e-8)
+    print(f"{'='*50}")
+    print("TESTING PIPELINE")
+    print(f"{'='*50}")
+    print(f"Test data shape: {X.shape}")
+    print(f"Test labels shape: {Y.shape}")
+    print(f"Softmax weights shape: {W.shape}")
+    print(f"Model V1: {V1.shape}, V2: {V2.shape}, V3: {V3.shape}")
+    
+    # Aplicar el mismo pipeline que en entrenamiento
+    print(f"\n{'='*50}")
+    print("APPLYING TRANSFORMATIONS")
+    print(f"{'='*50}")
+    
+    # 1. Normalización inicial
+    X = normalize_with_stats(X, means[0], stds[0])
+    print(f"After initial normalization: {X.shape}")
+    
+    # 2. Primera capa autoencoder
     X = act_sigmoid(V1 @ X)
-    print(f"Después de V1: {X.shape}")
-    X = act_sigmoid(V2 @ X)
-    print(f"Después de V2: {X.shape}")
-    X = V3 @ X
-    print(f"Después de V3: {X.shape}")
-    X = (X - np.mean(X, axis=1, keepdims=True)) / (np.std(X, axis=1, keepdims=True) + 1e-8)
+    X = normalize_with_stats(X, means[1], stds[1])
+    print(f"After V1 + normalization: {X.shape}")
     
-    # Aplicar softmax y obtener predicciones
+    # 3. Segunda capa autoencoder
+    X = act_sigmoid(V2 @ X)
+    X = normalize_with_stats(X, means[2], stds[2])
+    print(f"After V2 + normalization: {X.shape}")
+    
+    # 4. PCA
+    X = V3 @ X
+    X = normalize_with_stats(X, means[3], stds[3])
+    print(f"After V3 + normalization: {X.shape}")
+    
+    # 5. Aplicar softmax y obtener predicciones
     zv = forward_softmax(X, W)
     y_pred = np.argmax(zv, axis=0)
     y_true = np.argmax(Y, axis=0)
     
-    print(f"Predicciones: {y_pred.shape}")
-    print(f"Etiquetas reales: {y_true.shape}")
-    
     # Calcular y mostrar métricas
-    confusion_matrix, fscores = measures(y_true, y_pred)
+    confusion_matrix, fscores, accuracy = measures(y_true, y_pred)
     
-    print("\n" + "="*50)
+    print(f"\n{'='*50}")
     print("RESULTADOS DEL TESTING")
-    print("="*50)
+    print(f"{'='*50}")
+    
     print("\n--- MATRIZ DE CONFUSIÓN ---")
     print(f"Verdaderos Positivos (TP): {confusion_matrix[0,0]}")
     print(f"Falsos Positivos (FP): {confusion_matrix[0,1]}")
@@ -132,10 +146,15 @@ def main():
     print(f"Clase 2 (F1-score): {fscores[1]:.4f}")
     print(f"Promedio (F1-score): {fscores[2]:.4f}")
     
-    # Calcular accuracy adicional
-    accuracy = np.mean(y_true == y_pred)
     print(f"\n--- EXACTITUD (ACCURACY) ---")
-    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Accuracy: {accuracy:.4f} ({accuracy*100:.2f}%)")
+    
+    print(f"\n{'='*50}")
+    if accuracy >= 0.95:
+        print("OBJETIVO ALCANZADO: Accuracy >= 95%")
+    else:
+        print(f"Objetivo no alcanzado. Faltan {(0.95-accuracy)*100:.2f} puntos porcentuales")
+    print(f"{'='*50}")
 
 if __name__ == '__main__':
     main()
