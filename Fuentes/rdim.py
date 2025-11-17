@@ -13,25 +13,49 @@ def updW_adam(W, V, S, gW, mu, t):
     beta1 = 0.9
     beta2 = 0.999
     eps = 1e-8
+
     V = beta1 * V + (1 - beta1) * gW
     S = beta2 * S + (1 - beta2) * (gW ** 2)
+
     V_hat = V / (1 - beta1 ** t)
     S_hat = S / (1 - beta2 ** t)
+
     W = W - mu * V_hat / (np.sqrt(S_hat) + eps)
     return W, V, S
 
-def gradW1(Act, W2, L2_lambda=0.001):
-    """Gradiente con regularización L2"""
+def gradW1(Act, W2):
     H = Act['H']
     X_rec = Act['X_rec']
     X = Act['X']
-    W1 = Act['W1']
     error = X_rec - X
     batch_size = X.shape[1]
     dH = (W2.T @ error) * deriva_sigmoid(H)
-    gW1 = (dH @ X.T) / batch_size + L2_lambda * W1  
-    Cost = np.mean(error ** 2) + 0.5 * L2_lambda * np.sum(W1 ** 2)
+    gW1 = (dH @ X.T) / batch_size
+    Cost = np.mean(error ** 2)
     return gW1, Cost
+
+# def gradW1(Act, W2):
+#     """
+#     Gradiente con regularización L2 fija interna (no como parámetro).
+#     Si deseas quitar la regularización completamente, puedo hacerlo.
+#     """
+#     L2_lambda = 0.001  # <<< valor interno, NO proviene de parámetros
+
+#     H = Act['H']
+#     X_rec = Act['X_rec']
+#     X = Act['X']
+#     W1 = Act['W1']
+
+#     error = X_rec - X
+#     batch_size = X.shape[1]
+
+#     dH = (W2.T @ error) * deriva_sigmoid(H)
+
+#     # Regularización interna
+#     gW1 = (dH @ X.T) / batch_size + L2_lambda * W1
+
+#     Cost = np.mean(error ** 2) + 0.5 * L2_lambda * np.sum(W1 ** 2)
+#     return gW1, Cost
 
 def ae_forward(X, W1, W2):
     H = act_sigmoid(W1 @ X)
@@ -56,32 +80,45 @@ def get_miniBatch(n, X, BatchSize):
 def train_miniBatch(Xe, W1, W2, V, S, param, iter_count):
     numBatch = calcula_number_batch(Xe.shape[1], param['BatchSize'])
     Cost = np.zeros(numBatch)
+
     for n in range(1, numBatch + 1):
         xe = get_miniBatch(n, Xe, param['BatchSize'])
+
+        # Paso ELM cerrado
         W2 = ae_pinv(xe, W1, param['C'])
+
+        # Forward
         Act = ae_forward(xe, W1, W2)
-        gW1, Cost[n-1] = gradW1(Act, W2, param.get('L2_lambda', 0.001))
+
+        # Gradiente SIN pasar L2_lambda como parámetro
+        gW1, Cost[n-1] = gradW1(Act, W2)
+
+        # Actualización ADAM
         W1, V, S = updW_adam(W1, V, S, gW1, param['mu'], iter_count * numBatch + n)
+
     MSEavg = np.mean(Cost)
     return MSEavg, W1, V, S, W2
 
 def train_ae(X, param):
     Nprev = X.shape[0]
     Nnext = param['K']
+
     W1 = iniW(Nnext, Nprev)
     W2 = iniW(Nprev, Nnext)
+
     V = np.zeros_like(W1)
     S = np.zeros_like(W1)
-    
+
     best_mse = float('inf')
     patience = 50
     patience_counter = 0
-    
+
     for Iter in range(1, param['MaxIter'] + 1):
         idx = np.random.permutation(X.shape[1])
         Xe = X[:, idx]
+
         MSE, W1, V, S, W2 = train_miniBatch(Xe, W1, W2, V, S, param, Iter)
-        
+
         # Early stopping
         if MSE < best_mse:
             best_mse = MSE
@@ -89,15 +126,15 @@ def train_ae(X, param):
             patience_counter = 0
         else:
             patience_counter += 1
-            
+
         if patience_counter >= patience:
             print(f"Early stopping at iteration {Iter}")
             W1 = best_W1
             break
-            
+
         if Iter % 50 == 0:
             print(f"Iter {Iter}: MSE = {MSE:.6f}")
-    
+
     return W1
 
 def normalize_data(X, mean=None, std=None):
@@ -111,15 +148,14 @@ def normalize_data(X, mean=None, std=None):
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(script_dir, '..', 'DATA')
-    
-    # Leer configuración
+
     config_path = os.path.join(script_dir, 'config_sae.csv')
     config = pd.read_csv(config_path, header=None).values.flatten()
-    
-    # Leer datos de entrenamiento
+
     dtrain_path = os.path.join(data_path, 'dtrain.csv')
     X = pd.read_csv(dtrain_path, header=None).values.T
-    
+
+    # <<< Ya NO existe L2_lambda aquí
     param = {
         'K1': int(config[0]),
         'K2': int(config[1]),
@@ -128,65 +164,64 @@ def main():
         'mu': float(config[4]),
         'NumAE': 2,
         'BatchSize': 128,
-        'C': 0.05,
-        'L2_lambda': 0.001
+        'C': 0.09
     }
-    
+
     print(f"Original data shape: {X.shape}")
-    
-    # Normalizar datos y guardar estadísticas
+
+    # Normalizar entrada
     X, X_mean, X_std = normalize_data(X)
-    
+
     Vr = []
     stats = {'means': [X_mean], 'stds': [X_std]}
-    
+
     for i in range(param['NumAE']):
         print(f"\n{'='*50}")
         print(f"Training AE-ELM {i+1}...")
         print(f"{'='*50}")
-        
-        if i == 0:
-            param['K'] = param['K1']
-        else:
-            param['K'] = param['K2']
-        
+
+        param['K'] = param['K1'] if i == 0 else param['K2']
+
         V_ae = train_ae(X, param)
         Vr.append(V_ae)
+
+        # Nuevo embedding
         X = act_sigmoid(V_ae @ X)
-        
-        # Normalizar después de cada capa
+
+        # Re-normalizar
         X, mean, std = normalize_data(X)
         stats['means'].append(mean)
         stats['stds'].append(std)
-        
+
         print(f"Output shape after AE {i+1}: {X.shape}")
-    
+
     print(f"\n{'='*50}")
     print("Applying PC-SVD...")
     print(f"{'='*50}")
+
     V3 = pc_svd(X, param['K3'])
     X = V3 @ X
     Vr.append(V3)
-    
+
     # Normalización final
     X, mean, std = normalize_data(X)
     stats['means'].append(mean)
     stats['stds'].append(std)
-    
+
     print(f"Final reduced shape: {X.shape}")
-    
-    # Guardar modelo y estadísticas usando dtype=object
+
+    # Guardar modelo
     model_path = os.path.join(script_dir, 'model_rdim.npz')
-    np.savez(model_path, 
+    np.savez(model_path,
              V1=Vr[0], V2=Vr[1], V3=Vr[2],
              means=np.array(stats['means'], dtype=object),
              stds=np.array(stats['stds'], dtype=object))
-    
+
     # Guardar datos reducidos
     X_reduced = X.T
     output_path = os.path.join(script_dir, 'Xtrain_reduced.csv')
     pd.DataFrame(X_reduced).to_csv(output_path, index=False, header=False)
-    
+
     print(f"\n{'='*50}")
     print("REDUCTION SUMMARY")
     print(f"{'='*50}")
