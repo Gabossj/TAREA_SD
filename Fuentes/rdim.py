@@ -34,28 +34,6 @@ def gradW1(Act, W2):
     Cost = np.mean(error ** 2)
     return gW1, Cost
 
-# def gradW1(Act, W2):
-#     """
-#     Gradiente con regularización L2 fija interna (no como parámetro).
-#     Si deseas quitar la regularización completamente, puedo hacerlo.
-#     """
-#     L2_lambda = 0.001  # <<< valor interno, NO proviene de parámetros
-
-#     H = Act['H']
-#     X_rec = Act['X_rec']
-#     X = Act['X']
-#     W1 = Act['W1']
-
-#     error = X_rec - X
-#     batch_size = X.shape[1]
-
-#     dH = (W2.T @ error) * deriva_sigmoid(H)
-
-#     # Regularización interna
-#     gW1 = (dH @ X.T) / batch_size + L2_lambda * W1
-
-#     Cost = np.mean(error ** 2) + 0.5 * L2_lambda * np.sum(W1 ** 2)
-#     return gW1, Cost
 
 def ae_forward(X, W1, W2):
     H = act_sigmoid(W1 @ X)
@@ -155,7 +133,6 @@ def main():
     dtrain_path = os.path.join(data_path, 'dtrain.csv')
     X = pd.read_csv(dtrain_path, header=None).values.T
 
-    # <<< Ya NO existe L2_lambda aquí
     param = {
         'K1': int(config[0]),
         'K2': int(config[1]),
@@ -164,7 +141,7 @@ def main():
         'mu': float(config[4]),
         'NumAE': 2,
         'BatchSize': 128,
-        'C': 0.09
+        'C': 0.001
     }
 
     print(f"Original data shape: {X.shape}")
