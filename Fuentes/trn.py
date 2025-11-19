@@ -59,6 +59,7 @@ def train_softmax(X, Y, param):
     best_W = W.copy()
     patience = 20
     patience_counter = 0
+    cost_history = []
     
     for Iter in range(1, param['MaxIter'] + 1):
         idx = np.random.permutation(X.shape[1])
@@ -66,6 +67,7 @@ def train_softmax(X, Y, param):
         Ye = Y[:, idx]
         
         Cost, W, V, S = train_miniBatch(Xe, Ye, W, V, S, param['mu'], param['BatchSize'], Iter)
+        cost_history.append(Cost)
         
         if Iter % 50 == 0:
             acc = evaluate_accuracy(X, Y, W)
@@ -85,7 +87,7 @@ def train_softmax(X, Y, param):
     W = best_W
     final_acc = evaluate_accuracy(X, Y, W)
     print(f"Best Acc: {best_acc*100:.2f}%, Final Acc: {final_acc*100:.2f}%")
-    return W, [Cost]
+    return W, cost_history
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -96,9 +98,9 @@ def main():
     Y = pd.read_csv(os.path.join(data_path, 'classtrain.csv'), header=None).values.T
     
     param = {
-        'MaxIter': int(config[0]),
-        'mu': float(config[1]),
-        'BatchSize': int(config[2])
+        'MaxIter': int(config[0]),    # Max. Iteración - índice 0
+        'BatchSize': int(config[1]),  # BatchSize - índice 1
+        'mu': float(config[2])        # Tasa Aprend. (mu) - índice 2
     }
     
     print(f"Softmax: {X.shape[0]} features -> {Y.shape[0]} classes, MaxIter={param['MaxIter']}, mu={param['mu']}, BatchSize={param['BatchSize']}\n")
@@ -106,7 +108,7 @@ def main():
     W, Cost = train_softmax(X, Y, param) 
     
     np.save(os.path.join(script_dir, 'W_softmax.npy'), W)
-    pd.DataFrame({'Cost': Cost}).to_csv(os.path.join(script_dir, 'cost_history.csv'), index=False)
+    pd.DataFrame({'Cost': Cost}).to_csv(os.path.join(script_dir, 'cost_history.csv'), index=False, header=False)
     
     print(f"\nFinal Cost: {Cost[-1]:.6f}")
 

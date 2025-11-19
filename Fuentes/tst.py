@@ -80,11 +80,8 @@ def main():
     print(f"\n{'✓ F5 MET' if fscore_avg >= 0.90 else '✗ F5 NOT MET'}")
     
     pd.DataFrame(confusion_matrix).to_csv(os.path.join(script_dir, 'confusion.csv'), index=False, header=False)
-    fscores_df = pd.DataFrame({
-        'Class': [f'Class_{i}' for i in range(num_classes)] + ['Average'],
-        'F-Score': list(fscores) + [fscore_avg]
-    })
-    fscores_df.to_csv(os.path.join(script_dir, 'fscores.csv'), index=False)
+    fscores_values = list(fscores) + [fscore_avg]
+    pd.DataFrame(fscores_values).to_csv(os.path.join(script_dir, 'fscores.csv'), index=False, header=False)
 
 if __name__ == '__main__':
     import time

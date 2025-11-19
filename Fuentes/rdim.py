@@ -108,14 +108,14 @@ def main():
     X = pd.read_csv(dtrain_path, header=None).values.T
     
     param = {
-        'K1': int(config[0]),
-        'K2': int(config[1]),
-        'K3': int(config[2]),
-        'MaxIter': int(config[3]),
-        'mu': float(config[4]),
-        'NumAE': 2,
-        'BatchSize': 128,
-        'C': 10
+        'C': float(config[0]),        # Penalidad (C) - índice 0
+        'MaxIter': int(config[1]),    # Max. Iteración - índice 1
+        'BatchSize': int(config[2]),  # BatchSize - índice 2
+        'mu': float(config[3]),       # Tasa Aprend. (mu) - índice 3
+        'K1': int(config[4]),         # Rec. Dimensión K1 - índice 4
+        'K2': int(config[5]),         # Rec. Dimensión K2 - índice 5
+        'K3': int(config[6]),         # Rec. Dimensión K3 - índice 6
+        'NumAE': 2
     }
     
     print(f"Config: K1={param['K1']}, K2={param['K2']}, K3={param['K3']}, MaxIter={param['MaxIter']}, mu={param['mu']}, BatchSize={param['BatchSize']}, C={param['C']}\n")
